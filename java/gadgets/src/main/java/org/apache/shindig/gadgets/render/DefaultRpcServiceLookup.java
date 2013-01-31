@@ -18,12 +18,14 @@
  */
 package org.apache.shindig.gadgets.render;
 
-import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
-import com.google.common.base.Preconditions;
+import com.google.common.base.Objects;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.MapMaker;
 import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -44,7 +46,7 @@ import com.google.inject.name.Named;
 @Singleton
 public class DefaultRpcServiceLookup implements RpcServiceLookup {
 
-  private final ConcurrentMap<String, Multimap<String, String>> containerServices;
+  private final Cache<String, Multimap<String, String>> containerServices;
 
   private final DefaultServiceFetcher fetcher;
 
@@ -55,7 +57,9 @@ public class DefaultRpcServiceLookup implements RpcServiceLookup {
   @Inject
   public DefaultRpcServiceLookup(DefaultServiceFetcher fetcher,
       @Named("org.apache.shindig.serviceExpirationDurationMinutes")Long duration) {
-    containerServices = new MapMaker().expiration(duration * 60, TimeUnit.SECONDS).makeMap();
+    this.containerServices = CacheBuilder.newBuilder()
+        .expireAfterWrite(duration * 60, TimeUnit.SECONDS)
+        .build();
     this.fetcher = fetcher;
   }
 
@@ -64,22 +68,23 @@ public class DefaultRpcServiceLookup implements RpcServiceLookup {
    * @param host      Host for which gadget is being rendered, used to do substitution in endpoints
    * @return Map of Services, by endpoint for the given container.
    */
-  public Multimap<String, String> getServicesFor(String container, String host) {
-    Preconditions.checkNotNull(container);
-    Preconditions.checkArgument(container.length() != 0);
-    Preconditions.checkNotNull(host);
-
-    Multimap<String, String> foundServices = containerServices.get(container);
-    if (foundServices == null) {
-      foundServices = fetcher.getServicesForContainer(container, host);
-      if (foundServices != null) {
-        setServicesFor(container, foundServices);
-      }
+  public Multimap<String, String> getServicesFor(final String container, final String host) {
+    // Support empty container or host by providing empty services:
+    if (container == null || container.length() == 0 || host == null) {
+      return ImmutableMultimap.of();
     }
-    if (foundServices == null) {
-      foundServices = ImmutableMultimap.<String, String>builder().build();
+    try {
+      return containerServices.get(container,
+        new Callable<Multimap<String, String>>() {
+          public Multimap<String, String> call() {
+            return Objects.firstNonNull(fetcher.getServicesForContainer(container, host),
+                ImmutableMultimap.<String,String>of());
+          }
+        }
+    );
+    } catch (ExecutionException e) {
+      return ImmutableMultimap.of();
     }
-    return foundServices;
   }
 
   /**
@@ -89,7 +94,7 @@ public class DefaultRpcServiceLookup implements RpcServiceLookup {
    * @param foundServices Map of services, keyed by endpoint.
    */
   void setServicesFor(String container, Multimap<String, String> foundServices) {
-    containerServices.put(container, foundServices);
+    containerServices.asMap().put(container, foundServices);
   }
 
 }

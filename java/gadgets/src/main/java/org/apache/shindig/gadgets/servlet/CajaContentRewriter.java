@@ -128,7 +128,7 @@ public class CajaContentRewriter implements org.apache.shindig.gadgets.rewrite.G
       MessageQueue mq = new SimpleMessageQueue();
       BuildInfo bi = BuildInfo.getInstance();
       DefaultGadgetRewriter rw = new DefaultGadgetRewriter(bi, mq);
-      rw.setValijaMode(true);
+      //rw.setValijaMode(true);
       InputSource is = new InputSource(retrievedUri);
       boolean safe = false;
       

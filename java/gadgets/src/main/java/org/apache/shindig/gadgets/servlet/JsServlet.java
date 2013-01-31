@@ -81,7 +81,7 @@ public class JsServlet extends InjectedServlet {
           0, resourceName.length() - ".js".length());
     }
 
-    Set<String> needed = ImmutableSet.of(resourceName.split(":"));
+    Set<String> needed = ImmutableSet.copyOf(resourceName.split(":"));
 
     String debugStr = req.getParameter("debug");
     String containerParam = req.getParameter("container");
